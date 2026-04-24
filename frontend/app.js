@@ -1,8 +1,3 @@
-// -------------------------------------------------------------------------
-// Bajaj Test - Application Logic
-// This script handles the interaction between the UI and the Backend API.
-// -------------------------------------------------------------------------
-
 const defaultSamples = [
   "A->B",
   "A->C",
@@ -13,7 +8,6 @@ const defaultSamples = [
   "Z->X"
 ];
 
-// Mapping DOM elements to constants for easy access
 const apiEndpointInput = document.getElementById("api-base-url");
 const edgeInputArea = document.getElementById("node-input");
 const btnProcess = document.getElementById("submit-button");
@@ -28,28 +22,18 @@ const statsGrid = document.getElementById("summary-grid");
 const treeView = document.getElementById("hierarchy-list");
 const errorLists = document.getElementById("lists-grid");
 
-// Initialize the API URL from the global config
 apiEndpointInput.value = window.APP_CONFIG?.apiBaseUrl || "";
 
-/**
- * Updates the visual alert banner with a message and status level.
- */
 function updateAlert(msg, level) {
   alertBanner.textContent = msg;
   alertBanner.className = `status-banner ${level}`;
 }
 
-/**
- * Clears and hides the alert banner.
- */
 function resetAlert() {
   alertBanner.textContent = "";
   alertBanner.className = "status-banner hidden";
 }
 
-/**
- * Creates a reusable info card component for the grid.
- */
 function createCardElement(lbl, val, styleClass) {
   const box = document.createElement("article");
   box.className = styleClass;
@@ -66,9 +50,6 @@ function createCardElement(lbl, val, styleClass) {
   return box;
 }
 
-/**
- * Recursively builds the visual tree structure from the API hierarchy object.
- */
 function generateTreeNode(name, subTree) {
   const li = document.createElement("li");
   const nodeEl = document.createElement("span");
@@ -88,9 +69,6 @@ function generateTreeNode(name, subTree) {
   return li;
 }
 
-/**
- * Renders a specific graph/hierarchy card including badges and the tree view.
- */
 function createHierarchyView(data, idx) {
   const card = document.createElement("article");
   card.className = "hierarchy-card";
@@ -119,7 +97,6 @@ function createHierarchyView(data, idx) {
   if (data.has_cycle) {
     outputBox.textContent = "Cycle detected; tree structure suppressed.";
   } else {
-    // We assume the tree object has at least one root entry
     const entries = Object.entries(data.tree);
     if (entries.length > 0) {
       const [rootKey, rootVal] = entries[0];
@@ -134,9 +111,6 @@ function createHierarchyView(data, idx) {
   return card;
 }
 
-/**
- * Renders a simple list of strings (for errors or duplicates).
- */
 function createListView(header, items) {
   const box = document.createElement("article");
   box.className = "list-card";
@@ -165,66 +139,50 @@ function createListView(header, items) {
   return box;
 }
 
-/**
- * Validates and parses the raw text area input into a clean string array.
- */
 function processRawInput(text) {
   const val = text.trim();
   if (!val) return [];
 
-  // Support for JSON array input
   if (val.startsWith("[")) {
     const parsed = JSON.parse(val);
     if (!Array.isArray(parsed)) throw new Error("Input must be a JSON array.");
     return parsed.map(String);
   }
 
-  // Support for newline/comma separated entries
   return val.split(/[\n,]+/).map(s => s.trim()).filter(s => s.length > 0);
 }
 
-/**
- * Main function to populate the UI with the backend response data.
- */
 function displayResults(res) {
   emptyView.classList.add("hidden");
   resultsContainer.classList.remove("hidden");
 
-  // Clear previous results
   userIdentityBox.innerHTML = "";
   statsGrid.innerHTML = "";
   treeView.innerHTML = "";
   errorLists.innerHTML = "";
 
-  // Render identity info
   userIdentityBox.append(
     createCardElement("User", res.user_id, "info-card"),
     createCardElement("Contact", res.email_id, "info-card"),
     createCardElement("ID", res.college_roll_number, "info-card")
   );
 
-  // Render high-level summary statistics
   statsGrid.append(
     createCardElement("Trees", String(res.summary.total_trees), "summary-card"),
     createCardElement("Cycles", String(res.summary.total_cycles), "summary-card"),
     createCardElement("Max Root", res.summary.largest_tree_root || "N/A", "summary-card")
   );
 
-  // Render individual graph hierarchies
   res.hierarchies.forEach((h, i) => {
     treeView.appendChild(createHierarchyView(h, i));
   });
 
-  // Render validation lists
   errorLists.append(
     createListView("Invalid", res.invalid_entries),
     createListView("Duplicates", res.duplicate_edges)
   );
 }
 
-/**
- * Handles the click event for the processing button.
- */
 async function handleSubmission() {
   resetAlert();
   progressText.textContent = "Processing...";
@@ -248,7 +206,6 @@ async function handleSubmission() {
   btnProcess.disabled = true;
 
   try {
-    // API request to the BFHL endpoint
     const resp = await fetch(`${base}/bfhl`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -269,7 +226,6 @@ async function handleSubmission() {
   }
 }
 
-// Event Listeners for buttons
 btnProcess.addEventListener("click", handleSubmission);
 
 btnLoadSample.addEventListener("click", () => {

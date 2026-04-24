@@ -1,7 +1,7 @@
 const express = require("express");
 const cors = require("cors");
-
 const path = require("path");
+const https = require("https");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,288 +14,221 @@ const identity = {
 
 app.use(cors());
 app.use(express.json());
-
-// Serve static files from the frontend directory
 app.use(express.static(path.join(__dirname, "../frontend")));
 
-function normalizeEntry(rawEntry) {
-  if (typeof rawEntry !== "string") {
-    return "";
-  }
-
-  return rawEntry.trim();
+function normalize(input) {
+  if (typeof input !== "string") return "";
+  return input.trim();
 }
 
-function parseEntries(data) {
-  const invalidEntries = [];
-  const duplicateEdges = [];
-  const duplicateTracker = new Set();
-  const seenEdges = new Set();
-  const validEdges = [];
+function processData(list) {
+  const bad = [];
+  const dups = [];
+  const dupCheck = new Set();
+  const seen = new Set();
+  const valid = [];
 
-  for (const rawEntry of data) {
-    const entry = normalizeEntry(rawEntry);
-    const match = /^([A-Z])->([A-Z])$/.exec(entry);
+  for (const raw of list) {
+    const entry = normalize(raw);
+    const parts = /^([A-Z])->([A-Z])$/.exec(entry);
 
-    if (!entry || !match) {
-      invalidEntries.push(entry);
+    if (!entry || !parts) {
+      bad.push(entry);
       continue;
     }
 
-    const [, parent, child] = match;
+    const [, p, c] = parts;
 
-    if (parent === child) {
-      invalidEntries.push(entry);
+    if (p === c) {
+      bad.push(entry);
       continue;
     }
 
-    if (seenEdges.has(entry)) {
-      if (!duplicateTracker.has(entry)) {
-        duplicateEdges.push(entry);
-        duplicateTracker.add(entry);
+    if (seen.has(entry)) {
+      if (!dupCheck.has(entry)) {
+        dups.push(entry);
+        dupCheck.add(entry);
       }
       continue;
     }
 
-    seenEdges.add(entry);
-    validEdges.push({ parent, child, edge: entry });
+    seen.add(entry);
+    valid.push({ p, c, full: entry });
   }
 
-  return {
-    validEdges,
-    invalidEntries,
-    duplicateEdges,
-  };
+  return { valid, bad, dups };
 }
 
-function buildHierarchyTree(root, childrenMap) {
-  const nodeChildren = childrenMap.get(root) || [];
-  const branch = {};
-
-  for (const child of nodeChildren) {
-    branch[child] = buildHierarchyTree(child, childrenMap);
+function getTree(node, map) {
+  const children = map.get(node) || [];
+  const obj = {};
+  for (const child of children) {
+    obj[child] = getTree(child, map);
   }
-
-  return branch;
+  return obj;
 }
 
-function calculateDepth(root, childrenMap) {
-  const nodeChildren = childrenMap.get(root) || [];
-
-  if (nodeChildren.length === 0) {
-    return 1;
+function getDepth(node, map) {
+  const children = map.get(node) || [];
+  if (children.length === 0) return 1;
+  let max = 0;
+  for (const child of children) {
+    max = Math.max(max, getDepth(child, map));
   }
-
-  let maxChildDepth = 0;
-
-  for (const child of nodeChildren) {
-    maxChildDepth = Math.max(maxChildDepth, calculateDepth(child, childrenMap));
-  }
-
-  return maxChildDepth + 1;
+  return max + 1;
 }
 
-function detectCycle(componentNodes, childrenMap) {
-  const colors = new Map();
-  const componentSet = new Set(componentNodes);
+function hasCycle(nodes, map) {
+  const status = new Map();
+  const set = new Set(nodes);
 
-  function visit(node) {
-    colors.set(node, 1);
-
-    for (const child of childrenMap.get(node) || []) {
-      if (!componentSet.has(child)) {
-        continue;
-      }
-
-      const color = colors.get(child) || 0;
-
-      if (color === 1) {
-        return true;
-      }
-
-      if (color === 0 && visit(child)) {
-        return true;
-      }
+  function walk(n) {
+    status.set(n, 1);
+    for (const child of map.get(n) || []) {
+      if (!set.has(child)) continue;
+      const s = status.get(child) || 0;
+      if (s === 1) return true;
+      if (s === 0 && walk(child)) return true;
     }
-
-    colors.set(node, 2);
+    status.set(n, 2);
     return false;
   }
 
-  for (const node of componentNodes) {
-    if ((colors.get(node) || 0) === 0 && visit(node)) {
-      return true;
-    }
+  for (const n of nodes) {
+    if ((status.get(n) || 0) === 0 && walk(n)) return true;
   }
-
   return false;
 }
 
-function buildResponse(data) {
-  const { validEdges, invalidEntries, duplicateEdges } = parseEntries(data);
-  const nodeOrder = new Map();
+function createFinalOutput(data) {
+  const { valid, bad, dups } = processData(data);
+  const order = new Map();
 
-  for (const { parent, child } of validEdges) {
-    if (!nodeOrder.has(parent)) {
-      nodeOrder.set(parent, nodeOrder.size);
-    }
-
-    if (!nodeOrder.has(child)) {
-      nodeOrder.set(child, nodeOrder.size);
-    }
-
+  for (const { p, c } of valid) {
+    if (!order.has(p)) order.set(p, order.size);
+    if (!order.has(c)) order.set(c, order.size);
   }
 
-  const childrenMap = new Map();
-  const undirectedMap = new Map();
-  const parentByChild = new Map();
-  const allNodes = new Set();
+  const adj = new Map();
+  const graph = new Map();
+  const parents = new Map();
+  const nodes = new Set();
 
-  for (const { parent, child } of validEdges) {
-    if (parentByChild.has(child)) {
-      continue;
-    }
+  for (const { p, c } of valid) {
+    if (parents.has(c)) continue;
+    parents.set(c, p);
+    nodes.add(p);
+    nodes.add(c);
 
-    parentByChild.set(child, parent);
-    allNodes.add(parent);
-    allNodes.add(child);
+    if (!adj.has(p)) adj.set(p, []);
+    if (!adj.has(c)) adj.set(c, []);
+    if (!graph.has(p)) graph.set(p, []);
+    if (!graph.has(c)) graph.set(c, []);
 
-    if (!childrenMap.has(parent)) {
-      childrenMap.set(parent, []);
-    }
-
-    if (!childrenMap.has(child)) {
-      childrenMap.set(child, []);
-    }
-
-    if (!undirectedMap.has(parent)) {
-      undirectedMap.set(parent, []);
-    }
-
-    if (!undirectedMap.has(child)) {
-      undirectedMap.set(child, []);
-    }
-
-    childrenMap.get(parent).push(child);
-    undirectedMap.get(parent).push(child);
-    undirectedMap.get(child).push(parent);
+    adj.get(p).push(c);
+    graph.get(p).push(c);
+    graph.get(c).push(p);
   }
 
-  const orderedNodes = Array.from(allNodes).sort(
-    (left, right) => nodeOrder.get(left) - nodeOrder.get(right)
-  );
-
+  const sorted = Array.from(nodes).sort((a, b) => order.get(a) - order.get(b));
   const visited = new Set();
-  const components = [];
+  const groups = [];
 
-  for (const startNode of orderedNodes) {
-    if (visited.has(startNode)) {
-      continue;
-    }
-
-    const stack = [startNode];
-    const componentNodes = [];
-    visited.add(startNode);
-
-    while (stack.length > 0) {
-      const current = stack.pop();
-      componentNodes.push(current);
-
-      for (const neighbour of undirectedMap.get(current) || []) {
-        if (!visited.has(neighbour)) {
-          visited.add(neighbour);
-          stack.push(neighbour);
+  for (const start of sorted) {
+    if (visited.has(start)) continue;
+    const q = [start];
+    const group = [];
+    visited.add(start);
+    while (q.length > 0) {
+      const cur = q.pop();
+      group.push(cur);
+      for (const next of graph.get(cur) || []) {
+        if (!visited.has(next)) {
+          visited.add(next);
+          q.push(next);
         }
       }
     }
-
-    componentNodes.sort((left, right) => nodeOrder.get(left) - nodeOrder.get(right));
-    components.push(componentNodes);
+    group.sort((a, b) => order.get(a) - order.get(b));
+    groups.push(group);
   }
 
-  const hierarchies = components
-    .sort((left, right) => nodeOrder.get(left[0]) - nodeOrder.get(right[0]))
-    .map((componentNodes) => {
-      const roots = componentNodes.filter((node) => !parentByChild.has(node));
-      const root =
-        roots.length > 0
-          ? roots.sort()[0]
-          : [...componentNodes].sort()[0];
+  const results = groups
+    .sort((a, b) => order.get(a[0]) - order.get(b[0]))
+    .map((g) => {
+      const roots = g.filter((n) => !parents.has(n));
+      const root = roots.length > 0 ? roots.sort()[0] : [...g].sort()[0];
+      const cyclic = hasCycle(g, adj);
 
-      const hasCycle = detectCycle(componentNodes, childrenMap);
-
-      if (hasCycle) {
-        return {
-          root,
-          tree: {},
-          has_cycle: true,
-        };
+      if (cyclic) {
+        return { root, tree: {}, has_cycle: true };
       }
 
       return {
         root,
-        tree: {
-          [root]: buildHierarchyTree(root, childrenMap),
-        },
-        depth: calculateDepth(root, childrenMap),
+        tree: { [root]: getTree(root, adj) },
+        depth: getDepth(root, adj),
       };
     });
 
-  let largestTreeRoot = "";
-  let largestTreeDepth = 0;
-  let totalTrees = 0;
-  let totalCycles = 0;
+  let topRoot = "";
+  let topDepth = 0;
+  let treeCount = 0;
+  let cycleCount = 0;
 
-  for (const hierarchy of hierarchies) {
-    if (hierarchy.has_cycle) {
-      totalCycles += 1;
+  for (const r of results) {
+    if (r.has_cycle) {
+      cycleCount++;
       continue;
     }
-
-    totalTrees += 1;
-
-    if (
-      hierarchy.depth > largestTreeDepth ||
-      (hierarchy.depth === largestTreeDepth &&
-        (largestTreeRoot === "" || hierarchy.root < largestTreeRoot))
-    ) {
-      largestTreeDepth = hierarchy.depth;
-      largestTreeRoot = hierarchy.root;
+    treeCount++;
+    if (r.depth > topDepth || (r.depth === topDepth && (topRoot === "" || r.root < topRoot))) {
+      topDepth = r.depth;
+      topRoot = r.root;
     }
   }
 
   return {
     ...identity,
-    hierarchies,
-    invalid_entries: invalidEntries,
-    duplicate_edges: duplicateEdges,
+    hierarchies: results,
+    invalid_entries: bad,
+    duplicate_edges: dups,
     summary: {
-      total_trees: totalTrees,
-      total_cycles: totalCycles,
-      largest_tree_root: largestTreeRoot,
+      total_trees: treeCount,
+      total_cycles: cycleCount,
+      largest_tree_root: topRoot,
     },
   };
 }
 
-app.get("/", (request, response) => {
-  response.json({
-    message: "BFHL hierarchy API is running.",
-    endpoint: "/bfhl",
+app.get("/", (req, res) => {
+  res.json({
+    status: "online",
+    info: "BFHL API running",
   });
 });
 
-app.post("/bfhl", (request, response) => {
-  const { data } = request.body || {};
-
-  if (!Array.isArray(data)) {
-    return response.status(400).json({
-      error: "Request body must include a `data` array.",
-    });
-  }
-
-  return response.json(buildResponse(data));
+app.get("/ping", (req, res) => {
+  res.send("pong");
 });
 
+app.post("/bfhl", (req, res) => {
+  const { data } = req.body || {};
+  if (!Array.isArray(data)) {
+    return res.status(400).json({ error: "Invalid input" });
+  }
+  res.json(createFinalOutput(data));
+});
+
+const BOT_URL = "https://bajaj-test-backend-finq.onrender.com/ping";
+setInterval(() => {
+  https.get(BOT_URL, (res) => {
+    console.log("Ping sent: " + res.statusCode);
+  }).on("error", (e) => {
+    console.log("Ping error: " + e.message);
+  });
+}, 14 * 60 * 1000);
+
 app.listen(PORT, () => {
-  console.log(`BFHL API listening on port ${PORT}`);
+  console.log(`Server on port ${PORT}`);
 });
