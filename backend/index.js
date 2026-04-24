@@ -1,6 +1,8 @@
 const express = require("express");
 const cors = require("cors");
 
+const path = require("path");
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -12,6 +14,9 @@ const identity = {
 
 app.use(cors());
 app.use(express.json());
+
+// Serve static files from the frontend directory
+app.use(express.static(path.join(__dirname, "../frontend")));
 
 function normalizeEntry(rawEntry) {
   if (typeof rawEntry !== "string") {
