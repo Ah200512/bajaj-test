@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bajaj Test</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <h1>Bajaj Test</h1>
+          <p class="hero-copy">
+            Analyze node hierarchy relationships, detect cycles, and validate edge data.
+          </p>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="panel input-panel">
+          <div class="panel-head">
+            <h2>Node Input</h2>
+            <button id="fill-sample" type="button" class="ghost-button">
+              Load Sample
+            </button>
+          </div>
+
+          <label class="field-label" for="api-base-url">API Base URL</label>
+          <input
+            id="api-base-url"
+            type="url"
+            placeholder="http://localhost:3000"
+          />
+
+          <label class="field-label" for="node-input">Edges</label>
+          <textarea
+            id="node-input"
+            rows="12"
+            placeholder='One per line, comma-separated, or JSON array. Example:&#10;A->B&#10;A->C&#10;B->D'
+          ></textarea>
+
+          <div class="button-row">
+            <button id="submit-button" type="button" class="primary-button">
+              Process
+            </button>
+            <button id="clear-button" type="button" class="secondary-button">
+              Reset
+            </button>
+          </div>
+
+          <p class="helper-text">
+            Format: <code>X-&gt;Y</code> (Single uppercase letters)
+          </p>
+          <div id="status-banner" class="status-banner hidden"></div>
+        </section>
+
+        <section class="panel response-panel">
+          <div class="panel-head">
+            <h2>Results Viewer</h2>
+            <span id="request-state" class="request-state">Waiting for input</span>
+          </div>
+
+          <div id="response-empty" class="empty-state">
+            Process a request to see the results here.
+          </div>
+
+          <div id="response-content" class="response-content hidden">
+            <div id="identity-grid" class="info-grid"></div>
+            <div id="summary-grid" class="summary-grid"></div>
+            <div id="hierarchy-list" class="hierarchy-list"></div>
+            <div id="lists-grid" class="lists-grid"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="./config.js"></script>
+    <script src="./app.js"></script>
+  </body>
+  </html>
