@@ -7,9 +7,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 var user = {
-  user_id: "adithya_harish",
-  email_id: "ah6199@srmist.edu.in",
-  college_roll_number: "RA2311003020327"
+  user_id: 'adithya_harish',
+  email_id: 'ah6199@srmist.edu.in',
+  college_roll_number: 'RA2311003020327'
 };
 
 app.use(cors());
@@ -68,7 +68,7 @@ function runAnalysis(rawList) {
   let pairs = [];
 
   for (let item of rawList) {
-    let t = (item || "").toString().trim();
+    let t = (item || '').toString().trim();
     let bit = /^([A-Z])->([A-Z])$/.exec(t);
 
     if (!t || !bit) {
@@ -153,7 +153,7 @@ function runAnalysis(rawList) {
       };
     });
 
-  let top = "";
+  let top = '';
   let max = 0;
   let tC = 0, cC = 0;
 
@@ -162,7 +162,7 @@ function runAnalysis(rawList) {
       cC++;
     } else {
       tC++;
-      if (t.depth > max || (t.depth === max && (top === "" || t.root < top))) {
+      if (t.depth > max || (t.depth === max && (top === '' || t.root < top))) {
         max = t.depth;
         top = t.root;
       }
@@ -180,16 +180,16 @@ function runAnalysis(rawList) {
 
 app.post('/bfhl', (req, res) => {
   let d = req.body.data;
-  if (!d || !Array.isArray(d)) return res.status(400).send("error");
+  if (!d || !Array.isArray(d)) return res.status(400).send('error');
   res.json(runAnalysis(d));
 });
 
-app.get('/ping', (q, s) => s.send("ok"));
-app.get('/', (q, s) => s.json({ status: "ok" }));
+app.get('/ping', (q, s) => s.send('ok'));
+app.get('/', (q, s) => s.json({ status: 'ok' }));
 
-const keeper = "https://bajaj-test-backend-finq.onrender.com/ping";
+const keeper = 'https://bajaj-test-backend-finq.onrender.com/ping';
 setInterval(() => {
   https.get(keeper, (r) => {}).on('error', e => {});
 }, 800000 + Math.random() * 50000);
 
-app.listen(PORT, () => console.log("running"));
+app.listen(PORT, () => console.log('running'));
