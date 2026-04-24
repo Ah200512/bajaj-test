@@ -6,7 +6,7 @@ const https = require('https');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-var me = {
+var user = {
   user_id: "adithya_harish",
   email_id: "ah6199@srmist.edu.in",
   college_roll_number: "RA2311003020327"
@@ -16,215 +16,180 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../frontend')));
 
-function clean(str) {
-  if (typeof str !== 'string') return "";
-  return str.trim();
-}
-
-function parse(list) {
-  let bad = [];
-  let dups = [];
-  let dupSet = new Set();
-  let seen = new Set();
-  let ok = [];
-
-  for (let i = 0; i < list.length; i++) {
-    let raw = list[i];
-    let s = clean(raw);
-    let check = /^([A-Z])->([A-Z])$/.exec(s);
-
-    if (!s || !check) {
-      bad.push(s);
-      continue;
-    }
-
-    let p = check[1];
-    let c = check[2];
-
-    if (p === c) {
-      bad.push(s);
-      continue;
-    }
-
-    if (seen.has(s)) {
-      if (!dupSet.has(s)) {
-        dups.push(s);
-        dupSet.add(s);
-      }
-      continue;
-    }
-
-    seen.add(s);
-    ok.push({ p, c, val: s });
+function getD(n, m) {
+  let list = m.get(n) || [];
+  if (list.length == 0) return 1;
+  let max = 0;
+  for (let x = 0; x < list.length; x++) {
+    let d = getD(list[x], m);
+    if (d > max) max = d;
   }
-  return { ok, bad, dups };
+  return max + 1;
 }
 
-function build(n, m) {
-  let kids = m.get(n) || [];
-  let res = {};
-  kids.forEach(k => {
-    res[k] = build(k, m);
-  });
-  return res;
+function findLoop(items, m) {
+  let v = {};
+  let s = new Set(items);
+  let has = false;
+
+  const trace = (curr) => {
+    v[curr] = 1;
+    let nxt = m.get(curr) || [];
+    for (let k of nxt) {
+      if (!s.has(k)) continue;
+      if (v[k] === 1) { has = true; return; }
+      if (!v[k]) trace(k);
+      if (has) return;
+    }
+    v[curr] = 2;
+  };
+
+  for (let i = 0; i < items.length; i++) {
+    if (!v[items[i]]) trace(items[i]);
+    if (has) break;
+  }
+  return has;
 }
 
-function depth(n, m) {
+function makeObj(n, m) {
   let kids = m.get(n) || [];
-  if (kids.length === 0) return 1;
-  let d = 0;
+  let out = {};
   for (let k of kids) {
-    let cur = depth(k, m);
-    if (cur > d) d = cur;
+    out[k] = makeObj(k, m);
   }
-  return d + 1;
+  return out;
 }
 
-function cyclic(arr, m) {
-  let state = {}; 
-  let nodes = new Set(arr);
+function runAnalysis(rawList) {
+  let invalid = [];
+  let dupes = [];
+  let track = new Set();
+  let seenEdges = new Set();
+  let pairs = [];
 
-  function go(v) {
-    state[v] = 1;
-    let next = m.get(v) || [];
-    for (let n of next) {
-      if (!nodes.has(n)) continue;
-      if (state[n] === 1) return true;
-      if (!state[n] && go(n)) return true;
+  for (let item of rawList) {
+    let t = (item || "").toString().trim();
+    let bit = /^([A-Z])->([A-Z])$/.exec(t);
+
+    if (!t || !bit) {
+      invalid.push(t);
+    } else if (bit[1] === bit[2]) {
+      invalid.push(t);
+    } else {
+      if (seenEdges.has(t)) {
+        if (!track.has(t)) {
+          dupes.push(t);
+          track.add(t);
+        }
+      } else {
+        seenEdges.add(t);
+        pairs.push({ from: bit[1], to: bit[2], str: t });
+      }
     }
-    state[v] = 2;
-    return false;
   }
 
-  for (let n of arr) {
-    if (!state[n] && go(n)) return true;
-  }
-  return false;
-}
-
-function solve(input) {
-  let { ok, bad, dups } = parse(input);
-  let order = new Map();
-
-  ok.forEach(e => {
-    if (!order.has(e.p)) order.set(e.p, order.size);
-    if (!order.has(e.c)) order.set(e.c, order.size);
+  let nodeRank = new Map();
+  pairs.forEach(p => {
+    if (!nodeRank.has(p.from)) nodeRank.set(p.from, nodeRank.size);
+    if (!nodeRank.has(p.to)) nodeRank.set(p.to, nodeRank.size);
   });
 
-  let adj = new Map();
-  let full = new Map();
-  let parentMap = new Map();
-  let all = new Set();
+  let links = new Map();
+  let bi = new Map();
+  let childToParent = new Map();
+  let allNodes = new Set();
 
-  ok.forEach(e => {
-    if (parentMap.has(e.c)) return;
-    parentMap.set(e.c, e.p);
-    all.add(e.p);
-    all.add(e.c);
+  pairs.forEach(p => {
+    if (childToParent.has(p.to)) return;
+    childToParent.set(p.to, p.from);
+    allNodes.add(p.from);
+    allNodes.add(p.to);
 
-    if (!adj.has(e.p)) adj.set(e.p, []);
-    if (!adj.has(e.c)) adj.set(e.c, []);
-    if (!full.has(e.p)) full.set(e.p, []);
-    if (!full.has(e.c)) full.set(e.c, []);
+    if (!links.has(p.from)) links.set(p.from, []);
+    if (!links.has(p.to)) links.set(p.to, []);
+    if (!bi.has(p.from)) bi.set(p.from, []);
+    if (!bi.has(p.to)) bi.set(p.to, []);
 
-    adj.get(e.p).push(e.c);
-    full.get(e.p).push(e.c);
-    full.get(e.c).push(e.p);
+    links.get(p.from).push(p.to);
+    bi.get(p.from).push(p.to);
+    bi.get(p.to).push(p.from);
   });
 
-  let sortedNodes = Array.from(all).sort((a, b) => order.get(a) - order.get(b));
-  let done = new Set();
-  let components = [];
+  let sorted = Array.from(allNodes).sort((a, b) => nodeRank.get(a) - nodeRank.get(b));
+  let visited = new Set();
+  let sets = [];
 
-  for (let startNode of sortedNodes) {
-    if (done.has(startNode)) continue;
-    let stack = [startNode];
-    let comp = [];
-    done.add(startNode);
-    while (stack.length > 0) {
-      let curr = stack.pop();
-      comp.push(curr);
-      (full.get(curr) || []).forEach(nbr => {
-        if (!done.has(nbr)) {
-          done.add(nbr);
-          stack.push(nbr);
+  for (let n of sorted) {
+    if (visited.has(n)) continue;
+    let stack = [n];
+    let group = [];
+    visited.add(n);
+    while (stack.length) {
+      let c = stack.pop();
+      group.push(c);
+      (bi.get(c) || []).forEach(nx => {
+        if (!visited.has(nx)) {
+          visited.add(nx);
+          stack.push(nx);
         }
       });
     }
-    comp.sort((a, b) => order.get(a) - order.get(b));
-    components.push(comp);
+    group.sort((a, b) => nodeRank.get(a) - nodeRank.get(b));
+    sets.push(group);
   }
 
-  let finalTrees = components
-    .sort((a, b) => order.get(a[0]) - order.get(b[0]))
-    .map(comp => {
-      let roots = comp.filter(n => !parentMap.has(n));
-      let root = roots.length > 0 ? roots.sort()[0] : [...comp].sort()[0];
-      let isCyclic = cyclic(comp, adj);
+  let trees = sets
+    .sort((a, b) => nodeRank.get(a[0]) - nodeRank.get(b[0]))
+    .map(g => {
+      let heads = g.filter(n => !childToParent.has(n));
+      let head = heads.length > 0 ? heads.sort()[0] : [...g].sort()[0];
+      let cyclic = findLoop(g, links);
 
-      if (isCyclic) return { root, tree: {}, has_cycle: true };
-
+      if (cyclic) return { root: head, tree: {}, has_cycle: true };
       return {
-        root,
-        tree: { [root]: build(root, adj) },
-        depth: depth(root, adj)
+        root: head,
+        tree: { [head]: makeObj(head, links) },
+        depth: getD(head, links)
       };
     });
 
-  let bigRoot = "";
-  let maxD = 0;
-  let tCount = 0;
-  let cCount = 0;
+  let top = "";
+  let max = 0;
+  let tC = 0, cC = 0;
 
-  finalTrees.forEach(t => {
+  trees.forEach(t => {
     if (t.has_cycle) {
-      cCount++;
+      cC++;
     } else {
-      tCount++;
-      if (t.depth > maxD || (t.depth === maxD && (bigRoot === "" || t.root < bigRoot))) {
-        maxD = t.depth;
-        bigRoot = t.root;
+      tC++;
+      if (t.depth > max || (t.depth === max && (top === "" || t.root < top))) {
+        max = t.depth;
+        top = t.root;
       }
     }
   });
 
   return {
-    ...me,
-    hierarchies: finalTrees,
-    invalid_entries: bad,
-    duplicate_edges: dups,
-    summary: {
-      total_trees: tCount,
-      total_cycles: cCount,
-      largest_tree_root: bigRoot
-    }
+    ...user,
+    hierarchies: trees,
+    invalid_entries: invalid,
+    duplicate_edges: dupes,
+    summary: { total_trees: tC, total_cycles: cC, largest_tree_root: top }
   };
 }
 
-app.get('/', (req, res) => {
-  res.json({ msg: "api online" });
-});
-
-app.get('/ping', (req, res) => {
-  res.send('alive');
-});
-
 app.post('/bfhl', (req, res) => {
-  let data = req.body.data;
-  if (!Array.isArray(data)) {
-    return res.status(400).send("bad data");
-  }
-  console.log("processing request...");
-  res.json(solve(data));
+  let d = req.body.data;
+  if (!d || !Array.isArray(d)) return res.status(400).send("error");
+  res.json(runAnalysis(d));
 });
 
-let url = "https://bajaj-test-backend-finq.onrender.com/ping";
+app.get('/ping', (q, s) => s.send("ok"));
+app.get('/', (q, s) => s.json({ status: "ok" }));
+
+const keeper = "https://bajaj-test-backend-finq.onrender.com/ping";
 setInterval(() => {
-  https.get(url, (r) => {
-    // console.log("keepalive ok");
-  }).on('error', e => console.log("ping fail"));
-}, 840000);
+  https.get(keeper, (r) => {}).on('error', e => {});
+}, 800000 + Math.random() * 50000);
 
-app.listen(PORT, () => {
-  console.log("app started on " + PORT);
-});
+app.listen(PORT, () => console.log("running"));
