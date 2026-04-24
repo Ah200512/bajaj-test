@@ -1,234 +1,230 @@
-const express = require("express");
-const cors = require("cors");
-const path = require("path");
-const https = require("https");
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+const https = require('https');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const identity = {
+var me = {
   user_id: "adithya_harish",
   email_id: "ah6199@srmist.edu.in",
-  college_roll_number: "RA2311003020327",
+  college_roll_number: "RA2311003020327"
 };
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "../frontend")));
+app.use(express.static(path.join(__dirname, '../frontend')));
 
-function normalize(input) {
-  if (typeof input !== "string") return "";
-  return input.trim();
+function clean(str) {
+  if (typeof str !== 'string') return "";
+  return str.trim();
 }
 
-function processData(list) {
-  const bad = [];
-  const dups = [];
-  const dupCheck = new Set();
-  const seen = new Set();
-  const valid = [];
+function parse(list) {
+  let bad = [];
+  let dups = [];
+  let dupSet = new Set();
+  let seen = new Set();
+  let ok = [];
 
-  for (const raw of list) {
-    const entry = normalize(raw);
-    const parts = /^([A-Z])->([A-Z])$/.exec(entry);
+  for (let i = 0; i < list.length; i++) {
+    let raw = list[i];
+    let s = clean(raw);
+    let check = /^([A-Z])->([A-Z])$/.exec(s);
 
-    if (!entry || !parts) {
-      bad.push(entry);
+    if (!s || !check) {
+      bad.push(s);
       continue;
     }
 
-    const [, p, c] = parts;
+    let p = check[1];
+    let c = check[2];
 
     if (p === c) {
-      bad.push(entry);
+      bad.push(s);
       continue;
     }
 
-    if (seen.has(entry)) {
-      if (!dupCheck.has(entry)) {
-        dups.push(entry);
-        dupCheck.add(entry);
+    if (seen.has(s)) {
+      if (!dupSet.has(s)) {
+        dups.push(s);
+        dupSet.add(s);
       }
       continue;
     }
 
-    seen.add(entry);
-    valid.push({ p, c, full: entry });
+    seen.add(s);
+    ok.push({ p, c, val: s });
   }
-
-  return { valid, bad, dups };
+  return { ok, bad, dups };
 }
 
-function getTree(node, map) {
-  const children = map.get(node) || [];
-  const obj = {};
-  for (const child of children) {
-    obj[child] = getTree(child, map);
-  }
-  return obj;
+function build(n, m) {
+  let kids = m.get(n) || [];
+  let res = {};
+  kids.forEach(k => {
+    res[k] = build(k, m);
+  });
+  return res;
 }
 
-function getDepth(node, map) {
-  const children = map.get(node) || [];
-  if (children.length === 0) return 1;
-  let max = 0;
-  for (const child of children) {
-    max = Math.max(max, getDepth(child, map));
+function depth(n, m) {
+  let kids = m.get(n) || [];
+  if (kids.length === 0) return 1;
+  let d = 0;
+  for (let k of kids) {
+    let cur = depth(k, m);
+    if (cur > d) d = cur;
   }
-  return max + 1;
+  return d + 1;
 }
 
-function hasCycle(nodes, map) {
-  const status = new Map();
-  const set = new Set(nodes);
+function cyclic(arr, m) {
+  let state = {}; 
+  let nodes = new Set(arr);
 
-  function walk(n) {
-    status.set(n, 1);
-    for (const child of map.get(n) || []) {
-      if (!set.has(child)) continue;
-      const s = status.get(child) || 0;
-      if (s === 1) return true;
-      if (s === 0 && walk(child)) return true;
+  function go(v) {
+    state[v] = 1;
+    let next = m.get(v) || [];
+    for (let n of next) {
+      if (!nodes.has(n)) continue;
+      if (state[n] === 1) return true;
+      if (!state[n] && go(n)) return true;
     }
-    status.set(n, 2);
+    state[v] = 2;
     return false;
   }
 
-  for (const n of nodes) {
-    if ((status.get(n) || 0) === 0 && walk(n)) return true;
+  for (let n of arr) {
+    if (!state[n] && go(n)) return true;
   }
   return false;
 }
 
-function createFinalOutput(data) {
-  const { valid, bad, dups } = processData(data);
-  const order = new Map();
+function solve(input) {
+  let { ok, bad, dups } = parse(input);
+  let order = new Map();
 
-  for (const { p, c } of valid) {
-    if (!order.has(p)) order.set(p, order.size);
-    if (!order.has(c)) order.set(c, order.size);
-  }
+  ok.forEach(e => {
+    if (!order.has(e.p)) order.set(e.p, order.size);
+    if (!order.has(e.c)) order.set(e.c, order.size);
+  });
 
-  const adj = new Map();
-  const graph = new Map();
-  const parents = new Map();
-  const nodes = new Set();
+  let adj = new Map();
+  let full = new Map();
+  let parentMap = new Map();
+  let all = new Set();
 
-  for (const { p, c } of valid) {
-    if (parents.has(c)) continue;
-    parents.set(c, p);
-    nodes.add(p);
-    nodes.add(c);
+  ok.forEach(e => {
+    if (parentMap.has(e.c)) return;
+    parentMap.set(e.c, e.p);
+    all.add(e.p);
+    all.add(e.c);
 
-    if (!adj.has(p)) adj.set(p, []);
-    if (!adj.has(c)) adj.set(c, []);
-    if (!graph.has(p)) graph.set(p, []);
-    if (!graph.has(c)) graph.set(c, []);
+    if (!adj.has(e.p)) adj.set(e.p, []);
+    if (!adj.has(e.c)) adj.set(e.c, []);
+    if (!full.has(e.p)) full.set(e.p, []);
+    if (!full.has(e.c)) full.set(e.c, []);
 
-    adj.get(p).push(c);
-    graph.get(p).push(c);
-    graph.get(c).push(p);
-  }
+    adj.get(e.p).push(e.c);
+    full.get(e.p).push(e.c);
+    full.get(e.c).push(e.p);
+  });
 
-  const sorted = Array.from(nodes).sort((a, b) => order.get(a) - order.get(b));
-  const visited = new Set();
-  const groups = [];
+  let sortedNodes = Array.from(all).sort((a, b) => order.get(a) - order.get(b));
+  let done = new Set();
+  let components = [];
 
-  for (const start of sorted) {
-    if (visited.has(start)) continue;
-    const q = [start];
-    const group = [];
-    visited.add(start);
-    while (q.length > 0) {
-      const cur = q.pop();
-      group.push(cur);
-      for (const next of graph.get(cur) || []) {
-        if (!visited.has(next)) {
-          visited.add(next);
-          q.push(next);
+  for (let startNode of sortedNodes) {
+    if (done.has(startNode)) continue;
+    let stack = [startNode];
+    let comp = [];
+    done.add(startNode);
+    while (stack.length > 0) {
+      let curr = stack.pop();
+      comp.push(curr);
+      (full.get(curr) || []).forEach(nbr => {
+        if (!done.has(nbr)) {
+          done.add(nbr);
+          stack.push(nbr);
         }
-      }
+      });
     }
-    group.sort((a, b) => order.get(a) - order.get(b));
-    groups.push(group);
+    comp.sort((a, b) => order.get(a) - order.get(b));
+    components.push(comp);
   }
 
-  const results = groups
+  let finalTrees = components
     .sort((a, b) => order.get(a[0]) - order.get(b[0]))
-    .map((g) => {
-      const roots = g.filter((n) => !parents.has(n));
-      const root = roots.length > 0 ? roots.sort()[0] : [...g].sort()[0];
-      const cyclic = hasCycle(g, adj);
+    .map(comp => {
+      let roots = comp.filter(n => !parentMap.has(n));
+      let root = roots.length > 0 ? roots.sort()[0] : [...comp].sort()[0];
+      let isCyclic = cyclic(comp, adj);
 
-      if (cyclic) {
-        return { root, tree: {}, has_cycle: true };
-      }
+      if (isCyclic) return { root, tree: {}, has_cycle: true };
 
       return {
         root,
-        tree: { [root]: getTree(root, adj) },
-        depth: getDepth(root, adj),
+        tree: { [root]: build(root, adj) },
+        depth: depth(root, adj)
       };
     });
 
-  let topRoot = "";
-  let topDepth = 0;
-  let treeCount = 0;
-  let cycleCount = 0;
+  let bigRoot = "";
+  let maxD = 0;
+  let tCount = 0;
+  let cCount = 0;
 
-  for (const r of results) {
-    if (r.has_cycle) {
-      cycleCount++;
-      continue;
+  finalTrees.forEach(t => {
+    if (t.has_cycle) {
+      cCount++;
+    } else {
+      tCount++;
+      if (t.depth > maxD || (t.depth === maxD && (bigRoot === "" || t.root < bigRoot))) {
+        maxD = t.depth;
+        bigRoot = t.root;
+      }
     }
-    treeCount++;
-    if (r.depth > topDepth || (r.depth === topDepth && (topRoot === "" || r.root < topRoot))) {
-      topDepth = r.depth;
-      topRoot = r.root;
-    }
-  }
+  });
 
   return {
-    ...identity,
-    hierarchies: results,
+    ...me,
+    hierarchies: finalTrees,
     invalid_entries: bad,
     duplicate_edges: dups,
     summary: {
-      total_trees: treeCount,
-      total_cycles: cycleCount,
-      largest_tree_root: topRoot,
-    },
+      total_trees: tCount,
+      total_cycles: cCount,
+      largest_tree_root: bigRoot
+    }
   };
 }
 
-app.get("/", (req, res) => {
-  res.json({
-    status: "online",
-    info: "BFHL API running",
-  });
+app.get('/', (req, res) => {
+  res.json({ msg: "api online" });
 });
 
-app.get("/ping", (req, res) => {
-  res.send("pong");
+app.get('/ping', (req, res) => {
+  res.send('alive');
 });
 
-app.post("/bfhl", (req, res) => {
-  const { data } = req.body || {};
+app.post('/bfhl', (req, res) => {
+  let data = req.body.data;
   if (!Array.isArray(data)) {
-    return res.status(400).json({ error: "Invalid input" });
+    return res.status(400).send("bad data");
   }
-  res.json(createFinalOutput(data));
+  console.log("processing request...");
+  res.json(solve(data));
 });
 
-const BOT_URL = "https://bajaj-test-backend-finq.onrender.com/ping";
+let url = "https://bajaj-test-backend-finq.onrender.com/ping";
 setInterval(() => {
-  https.get(BOT_URL, (res) => {
-    console.log("Ping sent: " + res.statusCode);
-  }).on("error", (e) => {
-    console.log("Ping error: " + e.message);
-  });
-}, 14 * 60 * 1000);
+  https.get(url, (r) => {
+    // console.log("keepalive ok");
+  }).on('error', e => console.log("ping fail"));
+}, 840000);
 
 app.listen(PORT, () => {
-  console.log(`Server on port ${PORT}`);
+  console.log("app started on " + PORT);
 });
